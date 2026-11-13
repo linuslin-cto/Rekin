@@ -1,0 +1,65 @@
+{
+  "name": "Rekin",
+  "version": "0.1.0",
+  "description": "Rekin: TypeScript port of Harness² (Recursive Agent Harnessing for an Open World)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "rekin": "./dist/cli/run-sweep.js",
+    "rekin-demo": "./dist/cli/demo.js",
+    "rekin-judge": "./dist/cli/judge.js",
+    "rekin-report": "./dist/cli/report.js",
+    "rekin-check": "./dist/cli/check.js",
+    "rekin-setup": "./dist/cli/setup.js",
+    "rekin-bridge": "./dist/cli/bridge.js",
+    "harness2": "./dist/cli/run-sweep.js",
+    "harness2-demo": "./dist/cli/demo.js",
+    "harness2-judge": "./dist/cli/judge.js",
+    "harness2-report": "./dist/cli/report.js",
+    "harness2-check": "./dist/cli/check.js",
+    "harness2-setup": "./dist/cli/setup.js",
+    "harness2-bridge": "./dist/cli/bridge.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./substrate": {
+      "types": "./dist/substrate/index.d.ts",
+      "import": "./dist/substrate/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "demo": "tsx src/cli/demo.ts",
+    "check": "tsx src/cli/check.ts",
+    "sweep": "tsx src/cli/run-sweep.ts",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "proper-lockfile": "^4.1.2"
+  },
+  "devDependencies": {
+    "@types/proper-lockfile": "^4.1.4",
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  }
+}

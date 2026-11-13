@@ -1,0 +1,304 @@
+
+function tidy(text: string): string {
+  return text.replace(/\n{3,}/g, "\n\n").trim() + "\n";
+}
+
+type RequiredPrompts = Required<BenchPrompts>;
+
+function work(bp: RequiredPrompts): string {
+  return `# THE WORK\n\n${bp.work.trim()}`;
+}
+
+function lens(bp: RequiredPrompts): string {
+  const body = bp.domainGuidance.trim();
+  return body ? `# DOMAIN AND TASK LENS\n\n${body}` : "";
+}
+
+function surfacePart(surfaceMd: string, start: string, end?: string): string {
+  const i = surfaceMd.indexOf(start);
+  if (i < 0) throw new Error(`surfacePart: missing ${JSON.stringify(start)}`);
+  const j = end == null ? surfaceMd.length : surfaceMd.indexOf(end);
+  if (end != null && j < 0) throw new Error(`surfacePart: missing end ${JSON.stringify(end)}`);
+  return surfaceMd.slice(i, j).trim();
+}
+
+interface SurfaceText {
+  surfaceMd: string;
+  inv: string;
+  dom: string;
+  ttsSurface: string;
+}
+
+function buildSurfaceTexts(): Record<string, SurfaceText> {
+  const ocTts = [
+    _TTS_SURFACE_HEAD_OPENCODE,
+    surfacePart(_SURFACE_OPENCODE, "THREE RULES THAT DISCARD", "THE DELIVERABLE'S SHAPE"),
+    surfacePart(_SURFACE_OPENCODE, "# HOW TO MAKE A CHANGE"),
+  ].join("\n\n");
+  const cxTts = [
+    _TTS_SURFACE_HEAD_CODEX,
+    surfacePart(_SURFACE_CODEX, "A skill only exists", "THE DELIVERABLE'S SHAPE"),
+    surfacePart(_SURFACE_CODEX, "# HOW TO MAKE A CHANGE"),
+  ].join("\n\n");
+  return {
+    opencode: {
+      surfaceMd: _SURFACE_OPENCODE,
+      inv: _INV_TEMPLATE.replace(
+        "__LOOP_LEVER__",
+        "`plugin/<name>.ts` hook -- for example, preventing exit before a {deliverable} exists",
+      ),
+      dom: _DOM_TEMPLATE.replace(
+        "__TRIGGER_SENTENCE__",
+        "A skill exists only once its name appears in the always-on text: write that trigger line in the same edit.",
+      ),
+      ttsSurface: ocTts,
+    },
+    codex: {
+      surfaceMd: _SURFACE_CODEX,
+      inv: _INV_TEMPLATE.replace(
+        "__LOOP_LEVER__",
+        "hook in `.codex/hooks.json` -- for example, blocking a finish before a {deliverable} exists, with a corrective reason",
+      ),
+      dom: _DOM_TEMPLATE.replace(
+        "__TRIGGER_SENTENCE__",
+        "A skill exists only once its name appears in `AGENTS.md` as a trigger: write that trigger line in the same edit.",
+      ),
+      ttsSurface: cxTts,
+    },
+  };
+}
+
+const SURFACE_TEXTS = buildSurfaceTexts();
+
+function st(surface: SurfaceSpec | string): SurfaceText {
+  const name = typeof surface === "string" ? surface : surface.name;
+  const got = SURFACE_TEXTS[name];
+  if (!got) {
+    throw new Error(
+      `no prompt surface for ${JSON.stringify(name)}; known: ${Object.keys(SURFACE_TEXTS).sort().join(", ")}`,
+    );
+  }
+  return got;
+}
+
+function fmt(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{([a-zA-Z_]+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+}
+
+export const CONFORMANCE_BLOCK =
+  "2. CONFORMANCE. Is it ONLY what was asked for? Where the instructions name fields, " +
+  "columns, sheets, sections or an order, those define the artifact's SHAPE, and the shape " +
+  "is part of the request. Extra columns, extra sheets, added commentary rows, renamed or " +
+  "re-worded headers, merged title rows, and reordered fields are DEVIATIONS, not " +
+  "improvements -- however helpful they look. A downstream reader or importer may key on " +
+  "exact names and positions, and cannot ask you what you meant. Where the instruction is " +
+  "explicit, match it exactly; where it is silent, prefer the plainest form that satisfies " +
+  "it.\n" +
+  "   A value the request asks for must be PRESENT AS A VALUE. An artifact that leaves the " +
+  "reader to recompute it -- a spreadsheet formula in place of the number, a placeholder " +
+  "to be filled, a described-but-not-performed calculation -- has not delivered that " +
+  "value.\n\n";
+
+export const VALUE_TAIL =
+  "7. VALUES ARE VALUES. A value the request asks for must be PRESENT AS A VALUE. An " +
+  "artifact that leaves the reader to recompute it -- a spreadsheet formula in place of " +
+  "the number, a placeholder to be filled, a described-but-not-performed calculation -- " +
+  "has not delivered that value.\n\n";
+
+function checks(bp: RequiredPrompts): string {
+  const body = bp.selectionChecks.trim();
+  return body ? `# WHAT CORRECTNESS MEANS FOR THIS WORK\n\n${body}` : "";
+}
+
+export function propose(
+  bp: RequiredPrompts,
+  dim: string,
+  surface: SurfaceSpec | string,
+  opts: { k?: number; index?: number; roundT?: number | null } = {},
+): string {
+  if (dim !== "INV" && dim !== "DOM") {
+    throw new Error(`unknown proposal dimension ${JSON.stringify(dim)}; expected 'INV' or 'DOM'`);
+  }
+  const s = st(surface);
+  const k = opts.k ?? 1;
+  const index = opts.index ?? 1;
+  if (bp.promptPack === "tts" && opts.roundT == null) {
+    return tidy(
+      [
+        `You are the ${dim === "INV" ? "INVARIANT" : "DOMAIN"} harness editor for one task in this ${bp.domainWord}.`,
+        work(bp),
+        lens(bp),
+        fmt(dim === "INV" ? _TTS_INV : _TTS_DOM, {
+          deliverable: bp.deliverableWord,
+          domain: bp.domainWord,
+          levers: (dim === "INV" ? bp.invLevers : bp.domLevers).trim(),
+        }),
+        fmt(_TTS_GENERALIZE, {
+          domain_word: bp.domainWord,
+          DOMAIN_WORD_UPPER: bp.domainWord.toUpperCase(),
+        }),
+        _TTS_HOW,
+        s.ttsSurface,
+      ].join("\n\n"),
+    );
+  }
+  const block = fmt(dim === "INV" ? s.inv : s.dom, {
+    deliverable: bp.deliverableWord,
+    domain: bp.domainWord,
+    levers: (dim === "INV" ? bp.invLevers : bp.domLevers).trim(),
+  });
+  const parts = [
+    "You are adapting an autonomous agent's harness.",
+    work(bp),
+    lens(bp),
+    block,
+    fmt(GENERALIZE, { domain_word: bp.domainWord, DOMAIN_WORD_UPPER: bp.domainWord.toUpperCase() }),
+    ANSWER_FREE,
+    EVIDENCE_BOUNDARY,
+    s.surfaceMd,
+  ];
+  if (k > 1) {
+    parts.splice(
+      4,
+      0,
+      `You are candidate ${index} of ${k} on this dimension, drawn independently from the same evidence.`,
+    );
+  }
+  if (opts.roundT != null) {
+    parts.push(
+      `This is round ${opts.roundT}. You are editing the checkpoint the previous round produced, not the original harness.`,
+    );
+  }
+  if (bp.yardstick.trim()) parts.push(`# WHAT GOOD PROCESS LOOKS LIKE HERE\n\n${bp.yardstick.trim()}`);
+  return tidy(parts.join("\n\n"));
+}
+
+export function aggregate(
+  bp: RequiredPrompts,
+  surface: SurfaceSpec | string,
+  opts: { k?: number; index?: number } = {},
+): string {
+  const s = st(surface);
+  const k = opts.k ?? 1;
+  void opts.index;
+  if (bp.promptPack === "tts") {
+    const n = 2 * k;
+    return tidy(
+      [
+        "You are the integration judge and synthesizer. What you emit is what gets ADOPTED.",
+        work(bp),
+        lens(bp),
+        `# WHAT YOU HAVE\n\n${k} rollout(s) under the unmodified harness, and ${n} dimension-scoped candidate harnesses.`,
+        "# YOUR JOB\n\nSynthesize ONE final harness.",
+        k > 1
+          ? `You are one of ${k} synthesizers composing a final from this same evidence in parallel.`
+          : "",
+        ANSWER_FREE,
+        EVIDENCE_BOUNDARY,
+        s.ttsSurface,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    );
+  }
+  const n = 2 * k;
+  return tidy(
+    [
+      "You are composing THE final harness for one piece of work.",
+      work(bp),
+      lens(bp),
+      `# WHAT YOU HAVE\n\n${k} rollout(s) under the unmodified harness, and ${n} candidate harnesses.`,
+      "# YOUR JOB\n\nCompose ONE harness.",
+      _KEEP_BASE,
+      k > 1
+        ? `You are one of ${k} aggregators composing a final from this same evidence in parallel.`
+        : "",
+      bp.yardstick.trim() ? `# WHAT GOOD PROCESS LOOKS LIKE HERE\n\n${bp.yardstick.trim()}` : "",
+      ANSWER_FREE,
+      EVIDENCE_BOUNDARY,
+      s.surfaceMd,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  );
+}
+
+export function composeRound(
+  bp: RequiredPrompts,
+  surface: SurfaceSpec | string,
+  opts: { t: number; k: number },
+): string {
+  const s = st(surface);
+  const final = opts.t >= opts.k;
+  return tidy(
+    [
+      `You are composing checkpoint ${opts.t} of ${opts.k} in a sequential adaptation loop.`,
+      work(bp),
+      lens(bp),
+      final
+        ? "Compose THE FINAL harness, from the WHOLE history rather than just this round."
+        : `Compose checkpoint ${opts.t}, which the next round will build on.`,
+      _KEEP_BASE,
+      ANSWER_FREE,
+      EVIDENCE_BOUNDARY,
+      s.surfaceMd,
+    ].join("\n\n"),
+  );
+}
+
+export const compose_round = composeRound;
+
+export function select(
+  bp: RequiredPrompts,
+  n: number,
+  opts: { poolKind?: string; assetsNote?: string } = {},
+): string {
+  const poolKind = opts.poolKind ?? "mixed";
+  if (poolKind !== "mixed" && poolKind !== "finals") {
+    throw new Error(`unknown pool_kind ${JSON.stringify(poolKind)}; expected 'mixed' or 'finals'`);
+  }
+  const assetsNote = opts.assetsNote ?? "";
+  if (bp.promptPack === "tts") {
+    return tidy(
+      [
+        `You are choosing which of ${n} candidate ANSWERS to a workplace task should be delivered.`,
+        work(bp),
+        poolKind === "mixed" ? POOL_MIXED_SELECT : POOL_FINALS_SELECT,
+        `# WHAT YOU ARE LOOKING AT\n\n    context/task.md\n    context/candidates/<id>.md${assetsNote ? "\n" + assetsNote : ""}`,
+        ANSWER_FREE_SELECT,
+        EVIDENCE_BOUNDARY_SELECT,
+        "# OUTPUT FORMAT\n\n<why>...</why>\n\n```choice\n<id>\n```",
+      ].join("\n\n"),
+    );
+  }
+  return tidy(
+    [
+      `You are choosing which of ${n} candidate answers should be delivered.`,
+      work(bp),
+      lens(bp),
+      poolKind === "mixed" ? POOL_MIXED_SELECT : POOL_FINALS_SELECT,
+      bp.selectionLead.trim() ? `0. ${bp.selectionLead.trim()}` : "",
+      `1. DELIVERY. Is every ${bp.deliverableWord} named by the instructions present?`,
+      bp.selectionConformance === "value_only" ? "" : CONFORMANCE_BLOCK,
+      "3. FIDELITY. CHECK THE CLAIMS AGAINST context/source/.",
+      checks(bp),
+      ANSWER_FREE_SELECT,
+      EVIDENCE_BOUNDARY_SELECT,
+      "# OUTPUT FORMAT\n\n<why>...</why>\n\n```choice\n<id>\n```",
+    ].filter(Boolean).join("\n\n"),
+  );
+}
+
+export function experience(bp: RequiredPrompts): string {
+  return tidy(
+    [
+      "You are reading the complete record of one improvement round.",
+      work(bp),
+      lens(bp),
+      "# THE ADOPTED CANDIDATE IS NOT THE ONLY EVIDENCE",
+      "# OUTPUT FORMAT\n\n<edits>...</edits>\n\n<experience>...</experience>",
+      ANSWER_FREE,
+      EVIDENCE_BOUNDARY,
+    ].join("\n\n"),
+  );
+}
